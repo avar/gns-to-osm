@@ -1,12 +1,56 @@
-=pod
+#!/usr/bin/env perl
+use strict;
+use Pod::Usage ();
+use Getopt::Long ();
+use Locale::Country;
 
-gns2osm.pl
+Getopt::Long::Parser->new(
+	config => [ qw< bundling no_ignore_case no_require_order pass_through > ],
+)->getoptions(
+	'h|help'         => \my $help,
+    'in=s'           => \my $in_gns,
+    'out=s'          => \my $out_osm,
+    'country-code=s' => \my $iso_country_code,
+) or help();
 
-Script to read a GNS Country file and convert it to a .osm file.
+my $country_name = code2country($iso_country_code); # e.g. is -> Iceland
+
+help() unless $in_gns and $out_osm and $iso_country_code and $country_name;
+
+=head1 NAME
+
+gns-to-osm.pl - Reads a GNS Country file and converts it to a F<.osm> file.
+
+=head1 OPTIONS
+
+=over
+
+=item -h, --help
+
+Print a usage message listing all availible options
+
+=item --in FILE
+
+The input GNS file to use, e.g. F<ic.txt>.
+
+=item --out FILE
+
+The file to write the OSM data to, e.g. F<ic.osm>
+
+=item --country-code CODE
+
+The ISO-3166 country code to use in tags written to the OSM file. The
+country name will also be written based on what
+C<Locale::Country::code2country($country_code)> thinks the country is
+called.
+
+=back
+
+=head1 DESCRIPTION
 
 You can get individual country files or one big file for the whole world at
 
- http://earth-info.nga.mil/gns/html/namefiles.htm
+    L<http://earth-info.nga.mil/gns/html/namefiles.htm>
 
 This is complete and working for the Philippines.
 
@@ -20,7 +64,6 @@ Code to work out whether the place is a province, state, city or whatever.
 without restriction and without payment of any fee or royalty.
 
 =head1 GNS File Specification
-
 
 =head2 Feature Classification:
 
@@ -83,31 +126,12 @@ http://earth-info.nga.mil/gns/html/acuf/feature_designation_name.html
 
 =cut
 
-use strict;
-
-# Configuration - start
-
-my $gns_repository = 'E:\Geodata\geodata_GNScountryfiles';
-my $gns_file = $gns_repository.'/rp.txt';
-my $osm_file = $gns_repository.'/rp.osm';
-my $fips_country_code = 'rp';   # This is used by the GNS file
-my $iso_country_code = 'ph';       # For unofficial is_in:country_code tag
-my $country_name= 'Philippines';   # For is_in:country tag
-
-#$gns_file = $gns_repository.'/geonames_dd_dms_date_20071218.txt';
-#$gns_file = $gns_repository.'/sw.txt';
-#$fips_country_code = 'sw';   # This is used by the GNS file
-#$iso_country_code = 'se';       # For unofficial is_in:country_code tag
-#$country_name= 'Sweden';
-
-# Configuration - end
-
 #
 # Do an initial read to find top level place names from ADM1 POIs
 #
 my %adm1_names = ();    # For resolving what top level province/city a POI is in
 my $line;
-open( GNSFILE, '<'.$gns_file ) || die "Cannot open file $gns_file .. [$!]";
+open( GNSFILE, '<'.$in_gns ) || die "Cannot open file $in_gns .. [$!]";
 while ($line = <GNSFILE>) {
 
     chomp $line;
@@ -137,33 +161,26 @@ close(GNSFILE);
 # Now read for real
 #
 
-open( OSM_FILE, '>'.$osm_file ) || die "Cannot open file $osm_file .. [$!]";
+open( OSM_FILE, '>'.$out_osm ) || die "Cannot open file $out_osm .. [$!]";
 print OSM_FILE "<?xml version='1.0' encoding='UTF-8'?>\n";
 print OSM_FILE "<osm version='0.5' generator='GNS_Converter'>\n";
 
 my $counter = 0;
 my $id = 0;
-open( TICKERS, '<'.$gns_file ) || die "Cannot open file $gns_file .. [$!]";
+open( TICKERS, '<'.$in_gns ) || die "Cannot open file $in_gns .. [$!]";
 while ($line = <TICKERS>) {
-
-
         chomp $line;
-        #print      $line;
-        #my @fields = split('\t',$line);
+
         # Field definitions: http://earth-info.nga.mil/gns/html/gis_countryfiles.htm
-        my (undef, undef, $uni, $lat, $lon,undef,undef,undef,undef,
+        my ($rc, $ufi, $uni, $uni, $lat, $lon, $dms, $mgrs, $jog,
         $feature_classification, $feature_designation_code,
         $populated_place_classification,
         $primary_country_code,$adm1,$adm2,$population,$elevation,
-        $secondary_country_code,$name_type,undef,
-        undef,undef,undef,$full_name
-        )        = split('\t',$line);
+        $secondary_country_code,$name_type,$language_code,
+        $short_form_name,$generic_name,$sort_name, $full_name, $full_name_nd, $modify_date
+        ) = split /\t/, $line;
 
- #       unless ($primary_country_code =~ /rp/i) {next;}
-
-        #unless ($feature_classification =~ /H/i) {next;}
-        unless ($feature_designation_code =~ /ADM2/i) {next;}
-        unless ($lat > 14.0) {next;}
+        #unless ($feature_designation_code =~ /ADM2/i) {next;}
 
         if ($name_type =~ /V/i) {next;}  # Just ignore Variant names
 
@@ -205,7 +222,9 @@ while ($line = <TICKERS>) {
 
         if ($elevation) {$osm_tags{ele} = $elevation }   # Elevation in meters.
         if ($population) {$osm_tags{population} = $population }
-        if ($populated_place_classification) {$osm_tags{gns_populated_place_classification} = $populated_place_classification }
+        if ($populated_place_classification) {
+            $osm_tags{gns_populated_place_classification} = $populated_place_classification;
+        }
 
 
         # Create OSM tags depending on the GNS "Feature Classification Code", e.g. ADM1, CAVE ...
@@ -214,17 +233,17 @@ while ($line = <TICKERS>) {
             # Unmatched code found:
             print ' fc='.$feature_classification.' fdc='.$feature_designation_code .
                 ' nt='.$name_type.' adm1='.$adm1.' name='. $full_name."\n";
-            next;
+            next; # XXX
         }
 
         # NOT nt='.$name_type.' '
         # $adm2 not encountered
 
-        print OSM_FILE "<node id='".--$id."' action='modify' visible='true' lat='".$lat."' lon='".$lon."'>\n";
+        print OSM_FILE "  <node id='".--$id."' action='modify' visible='true' lat='".$lat."' lon='".$lon."'>\n";
         foreach my $key (keys %osm_tags) {
-            print OSM_FILE "<tag k='".$key."' v='".$osm_tags{$key}."' />\n";
+            print OSM_FILE "    <tag k='".$key."' v='".$osm_tags{$key}."' />\n";
         }
-        print OSM_FILE "</node>\n";
+        print OSM_FILE "  </node>\n";
 
 }
 
@@ -431,4 +450,14 @@ sub fdc2osm {
 
     return $matched;
 
+}
+
+sub help
+{
+    my %arg = @_;
+
+    Pod::Usage::pod2usage(
+        -verbose => $arg{ verbose },
+        -exitval => $arg{ exitval } || 0,
+    );
 }
