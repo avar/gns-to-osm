@@ -172,7 +172,7 @@ while ($line = <TICKERS>) {
         chomp $line;
 
         # Field definitions: http://earth-info.nga.mil/gns/html/gis_countryfiles.htm
-        my ($rc, $ufi, $uni, $uni, $lat, $lon, $dms, $mgrs, $jog,
+        my ($rc, $ufi, $uni, $lat, $lon, $dms_lat, $dms_long, $mgrs, $jog,
         $feature_classification, $feature_designation_code,
         $populated_place_classification,
         $primary_country_code,$adm1,$adm2,$population,$elevation,
@@ -184,13 +184,9 @@ while ($line = <TICKERS>) {
 
         if ($name_type =~ /V/i) {next;}  # Just ignore Variant names
 
-        #unless ($secondary_country_code) {next;}
-
         # If we have got here, this is a POI we want to write an OSM node for
 
         $counter++;
-        #if ($counter > 50) {next;}    # for testing
-
 
         #
         # Start generating the OSM tags for this POI
@@ -200,8 +196,11 @@ while ($line = <TICKERS>) {
 
         $osm_tags{'name'} = $full_name;
         $osm_tags{'source'} = 'GNS';
-        $osm_tags{'gns_uni'} = $uni;
-        $osm_tags{'gns_classification'} = $feature_designation_code;
+        $osm_tags{'gns:ufi'} = $ufi;
+        $osm_tags{'gns:uni'} = $uni;
+        $osm_tags{'gns:mgrs'} = $mgrs if $mgrs;
+        $osm_tags{'gns:jog'} = $jog if $jog;
+        $osm_tags{'gns:classification'} = $feature_designation_code;
         $osm_tags{'is_in:country'} = $country_name;
 
         $osm_tags{'is_in:country_code'} = $iso_country_code;
@@ -446,6 +445,10 @@ sub fdc2osm {
     # Underwater
     elsif ($fdc =~ /^RFU/i )    {$$osm_tags_ref{subsea} = 'reef' }   # Not a Map Features tag
     elsif ($fdc =~ /^PLTU$/i )  {$$osm_tags_ref{subsea} = 'plateau' } # Not a Map Features tag
+
+    # For Iceland
+    #elsif ($fdc =~ /^FJD$/i )   {$$osm_tags_ref{natural} = 'fjord' }
+
     else {$matched = 0;}
 
     return $matched;
