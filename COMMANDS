@@ -1,0 +1,1 @@
+perl gns-to-osm.pl --in ic/ic.txt --out ic/ic.osm --country-code is|perl -pe 's/^.*?fdc=(.*?) (.*)/sprintf("fdc=%5s %s", $1, $2)/ge; s/^fdc=(\s+)(.*?)nt=/fdc=$2$1nt=/g' > ic/ic.unrendered
