@@ -7,7 +7,7 @@ use Locale::Country;
 Getopt::Long::Parser->new(
 	config => [ qw< bundling no_ignore_case no_require_order pass_through > ],
 )->getoptions(
-	'h|help'         => \my $help,
+    'h|help'         => \my $help,
     'in=s'           => \my $in_gns,
     'out=s'          => \my $out_osm,
     'country-code=s' => \my $iso_country_code,
@@ -127,48 +127,17 @@ http://earth-info.nga.mil/gns/html/acuf/feature_designation_name.html
 =cut
 
 #
-# Do an initial read to find top level place names from ADM1 POIs
-#
-my %adm1_names = ();    # For resolving what top level province/city a POI is in
-my $line;
-open( GNSFILE, '<'.$in_gns ) || die "Cannot open file $in_gns .. [$!]";
-while ($line = <GNSFILE>) {
-
-    chomp $line;
-
-    my (undef, undef, undef, undef, undef,undef,undef,undef,undef,
-    undef, $feature_designation_code,
-    undef,
-    undef ,$adm1,$adm2,undef,undef,
-    undef,$name_type,undef,
-    undef,undef,undef,$full_name
-    )        = split('\t',$line);
-
-
-    if ($name_type =~ /V/i) {next;}  # Just ignore Variant names
-
-    if ($feature_designation_code =~ /^ADM1/i)
-    {
-        # Capture the xxx, we can use this to resolve what province / city at populated place is in.
-        $adm1_names{$adm1} = $full_name;
-
-    }
-
-}
-close(GNSFILE);
-
-#
 # Now read for real
 #
 
-open( OSM_FILE, '>'.$out_osm ) || die "Cannot open file $out_osm .. [$!]";
-print OSM_FILE "<?xml version='1.0' encoding='UTF-8'?>\n";
-print OSM_FILE "<osm version='0.5' generator='GNS_Converter'>\n";
+open my $OSM_FILE, '>', $out_osm or die "Cannot open file $out_osm .. [$!]";
+print $OSM_FILE "<?xml version='1.0' encoding='UTF-8'?>\n";
+print $OSM_FILE "<osm version='0.5' generator='GNS_Converter'>\n";
 
 my $counter = 0;
 my $id = 0;
-open( TICKERS, '<'.$in_gns ) || die "Cannot open file $in_gns .. [$!]";
-while ($line = <TICKERS>) {
+open my $TICKERS, '<', $in_gns or die "Cannot open file $in_gns .. [$!]";
+while (my $line = <$TICKERS>) {
         chomp $line;
 
         # Field definitions: http://earth-info.nga.mil/gns/html/gis_countryfiles.htm
@@ -180,9 +149,7 @@ while ($line = <TICKERS>) {
         $short_form_name,$generic_name,$sort_name, $full_name, $full_name_nd, $modify_date
         ) = split /\t/, $line;
 
-        #unless ($feature_designation_code =~ /ADM2/i) {next;}
-
-        if ($name_type =~ /V/i) {next;}  # Just ignore Variant names
+        if ($name_type =~ /V/i) { next;}  # Just ignore Variant names
 
         # If we have got here, this is a POI we want to write an OSM node for
 
@@ -192,37 +159,22 @@ while ($line = <TICKERS>) {
         # Start generating the OSM tags for this POI
         #
 
-        my %osm_tags = ();   # OSM tags to include for this node.
+        # OSM tags to include for this node.
+        my %osm_tags;
 
         $osm_tags{'name'} = $full_name;
         $osm_tags{'source'} = 'GNS';
-        $osm_tags{'gns:ufi'} = $ufi;
-        $osm_tags{'gns:uni'} = $uni;
-        $osm_tags{'gns:mgrs'} = $mgrs if $mgrs;
-        $osm_tags{'gns:jog'} = $jog if $jog;
-        $osm_tags{'gns:classification'} = $feature_designation_code;
-        $osm_tags{'is_in:country'} = $country_name;
-
-        $osm_tags{'is_in:country_code'} = $iso_country_code;
-
-        # Work out where it is
-        if ($adm1 && $adm1_names{$adm1}) {
-
-            # Look for province and city names
-            if ($adm1_names{$adm1}=~ /^Province\s+?of\s+?(.*)/) {
-                $osm_tags{'is_in:state'} = $adm1_names{$adm1};
-            } elsif ($adm1_names{$adm1} =~ /\bcity\b/i) {
-                $osm_tags{'is_in:city'} = $adm1_names{$adm1};
-            } else {
-                # Dunno
-                $osm_tags{'is_in'} = $adm1_names{$adm1};
-            }
-        }
+        $osm_tags{'gns:UFI'} = $ufi;
+        #$osm_tags{'gns:UNI'} = $uni;
+        $osm_tags{'gns:FC'} = $feature_classification;
+        $osm_tags{'gns:DSG'} = $feature_designation_code;
+        #$osm_tags{'is_in:country'} = $country_name;
+        #$osm_tags{'is_in:country_code'} = $iso_country_code;
 
         if ($elevation) {$osm_tags{ele} = $elevation }   # Elevation in meters.
         if ($population) {$osm_tags{population} = $population }
         if ($populated_place_classification) {
-            $osm_tags{gns_populated_place_classification} = $populated_place_classification;
+            $osm_tags{'gns:PC'} = $populated_place_classification;
         }
 
 
@@ -238,16 +190,16 @@ while ($line = <TICKERS>) {
         # NOT nt='.$name_type.' '
         # $adm2 not encountered
 
-        print OSM_FILE "  <node id='".--$id."' action='modify' visible='true' lat='".$lat."' lon='".$lon."'>\n";
+        print $OSM_FILE "  <node id='".--$id."' action='modify' visible='true' lat='".$lat."' lon='".$lon."'>\n";
         foreach my $key (keys %osm_tags) {
-            print OSM_FILE "    <tag k='".$key."' v='".$osm_tags{$key}."' />\n";
+            print $OSM_FILE "    <tag k='".$key."' v='".$osm_tags{$key}."' />\n";
         }
-        print OSM_FILE "  </node>\n";
+        print $OSM_FILE "  </node>\n";
 
 }
 
-print OSM_FILE "</osm>\n";
-close(OSM_FILE);
+print $OSM_FILE "</osm>\n";
+close($OSM_FILE);
 
 exit;
 
@@ -296,7 +248,7 @@ sub fdc2osm {
     elsif ($fdc =~ /^AREA$/i )  {$$osm_tags_ref{place} = 'region' }
     elsif ($fdc =~ /^RGN$/i )   {$$osm_tags_ref{place} = 'region' }
     elsif ($fdc =~ /^RGNE$/i )  {$$osm_tags_ref{place} = 'region' }
-    elsif ($fdc =~ /^INDS$/i )  {$$osm_tags_ref{place} = 'suburb'; $$osm_tags_ref{landuse} = 'industrial';}  # Industrial area
+    elsif ($fdc =~ /^INDS$/i )  {@$osm_tags_ref{qw< place landuse >} = qw< suburb industrial > }
     elsif ($fdc =~ /^PRK$/i )   {$$osm_tags_ref{place} = 'national_park' }    # Not a Map Features tag
     elsif ($fdc =~ /^PRT$/i )   {$$osm_tags_ref{place} = 'port' } # Not a Map Features tag
     elsif ($fdc =~ /^NVB$/i )   {$$osm_tags_ref{place} = 'locality'; $$osm_tags_ref{landuse} = 'military';}  # nAVAL Base
