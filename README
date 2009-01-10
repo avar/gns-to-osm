@@ -1,0 +1,5 @@
+# All gns:UFI's for the planet:
+wget 'http://xapi.openstreetmap.org/api/0.5/node[gns%3AUFI=*]'
+
+# All GNS data
+ftp://ftp.nga.mil/pub2/gns_data/geonames_dd_dms_date_20081231.zip
